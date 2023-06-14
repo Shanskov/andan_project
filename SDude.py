@@ -5,6 +5,7 @@ import geopandas
 
 def dataclear(df,
              df_addition,
+             df_fiw,
              useless_features = None,
              na_limit = 5
              ):
@@ -14,6 +15,7 @@ def dataclear(df,
     Args:
         df(pd.DataFrame): Датафрейм с основными данными (ACLED).
         df_addition(pd.DataFrame): Датафрейм с дополнительными данными.
+        df_fiw(pd.DataFrame): Датафрейм с индексами свобод (Freedom House).
         useless_features(list): Список ненужных колонок.
         na_limit(int): Процент допустимых пропусков в колонках.
         
@@ -44,10 +46,17 @@ def dataclear(df,
     df_addition['date'] = pd.to_datetime(df_addition['date'])
     df_addition["location"].replace(to_replace = "Czechia", value = "Czech Republic", inplace = True) #оправданный костыль
     
-    #стыковка двух датасетов по общему столбцу
+    #работа с третьим датасетом
+    df_fiw.columns = df_fiw.iloc[0].values
+    df_fiw["Country/Territory"].replace(to_replace = "Congo (Kinshasa)", value = 'Democratic Republic of Congo', inplace = True) #оправданный костыль 2
+    
+    #стыковка трех датасетов по общим столбцам
     df_addition["LOCDATE"] = df_addition["location"] + df_addition["date"].astype("str")
     df["LOCDATE"] = df["COUNTRY"] + df["EVENT_DATE"].astype("str")
     df_data = pd.merge(df, df_addition, on = "LOCDATE", how = "left")
+    df_data["LOCYEAR"] = df_data["COUNTRY"] + df_data["YEAR"].astype("str")
+    df_fiw["LOCYEAR"] = df_fiw["Country/Territory"] + df_fiw["Edition"].astype("str")
+    df_data = pd.merge(df_data, df_fiw, on="LOCYEAR")
     
     #очистка ненужных столбцов
     df_data = df_data.drop([
@@ -68,11 +77,22 @@ def dataclear(df,
     'ADMIN3', #Место действия
     'LOCATION',
     'INTERACTION',
-    'ACTOR1_TYPES' #Служебная колонка
+    'ACTOR1_TYPES', #Служебные колонки
+    'LOCDATE',
+    'LOCYEAR',
+    'Country/Territory', #Повторки
+    'Region',
+    'C/T',
+    'Edition',
+    'Status',
+    'iso_code',
+    'continent',
+    'date'
     ], axis = 1)
     if useless_features != None:
         df_data = df_data.drop(useless_features, axis = 1)
     df_data = df_data.drop(df_data[df_data["location"].isna()].index)
+    df_data = df_data.drop("location", axis = 1)
     df_data = df_data.drop(df_data.columns[df_data.isna().sum() > (na_limit * 0.01 * df_data.shape[0])], axis = 1)
     
     
@@ -99,7 +119,7 @@ def geo_join(df, shape,
         dataset_features_cum(list): Кумулятивные признаки ("Всего заболело" и т.д.).
         dataset_features_stat(list): Статистические признаки ("ВВП на душу населения" и т.д.)
         dataset_features_dyn(list): Признаки события ("Количество участников" и т.д.)
-        dataset_features_dyn_ratio(list): Признаки события, для которых нужно посчитать доли ("Доля")
+        dataset_features_dyn_ratio(list): Признаки события, для которых нужно посчитать доли ("Доля неорганизованных событий")
 
     Returns:
         gpd.GeoDataFrame: Агрегированный по странам датафрейм.
